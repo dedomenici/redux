@@ -3,6 +3,16 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script>
+      (function () {
+        var path = location.pathname || "/";
+        var match = path.match(/^(?:\/redux)?\/(themound|mound)(\/.*)?$/);
+        if (!match) return;
+        var rest = match[1] === "mound" ? "/" : match[2] || "/";
+        if (rest.charAt(0) !== "/") rest = "/" + rest;
+        location.replace("https://dedomenici.github.io/themound" + rest + location.search + location.hash);
+      })();
+    </script>
     <title>The Redux Project Movie Location Finder</title>
     <meta name="description" content="Search a movie and look at the street where it was filmed." />
     <meta name="theme-color" content="#ffffff" />

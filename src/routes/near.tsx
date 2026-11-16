@@ -3,6 +3,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { geocodePlace, nearbyFilms } from "@/lib/film.functions";
 import type { NearbySpot } from "@/lib/film-types";
 import { asset, tileUrl } from "@/lib/static-host";
+import { useMapGestures } from "@/lib/map-gestures";
 
 export const Route = createFileRoute("/near")({
   component: NearPage,
@@ -360,14 +361,13 @@ function NearbyMap({
   );
   const frameRef = useRef<HTMLDivElement>(null);
   const [frame, setFrame] = useState({ w: 640, h: 384 });
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [userZoom, setUserZoom] = useState(1);
-  const drag = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
-
-  useEffect(() => {
-    setPan({ x: 0, y: 0 });
-    setUserZoom(1);
-  }, [you.lat, you.lng, spots]);
+  const resetKey = `${you.lat},${you.lng},` + spots.map((spot) => spot.id).join("|");
+  const { zoom: userZoom, pan, setZoom: setUserZoom } = useMapGestures(frameRef, {
+    minZoom: 1,
+    maxZoom: 4,
+    resetKey,
+    ignorePointer: (target) => Boolean((target as HTMLElement | null)?.closest?.("button")),
+  });
 
   useEffect(() => {
     const el = frameRef.current;
@@ -419,18 +419,6 @@ function NearbyMap({
     return { zoom, cx, cy, x0, y0, tiles, scale, width: spanX * 256, height: spanY * 256 };
   }, [points, frame.w, frame.h]);
 
-  useEffect(() => {
-    const el = frameRef.current;
-    if (!el) return;
-    const onWheel = (event: WheelEvent) => {
-      event.preventDefault();
-      const next = event.deltaY > 0 ? 0.9 : 1.12;
-      setUserZoom((zoom) => Math.min(4, Math.max(1, Math.round(zoom * next * 100) / 100)));
-    };
-    el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
-  }, []);
-
   function place(lat: number, lng: number) {
     const fx = lonTile(lng, view.zoom);
     const fy = latTile(lat, view.zoom);
@@ -448,26 +436,8 @@ function NearbyMap({
     <div
       ref={frameRef}
       className="relative mt-3 h-96 cursor-grab touch-none overflow-hidden rounded-md border border-line bg-surface select-none active:cursor-grabbing"
-      onPointerDown={(event) => {
-        if ((event.target as HTMLElement).closest("button")) return;
-        drag.current = { x: event.clientX, y: event.clientY, panX: pan.x, panY: pan.y };
-        try {
-          event.currentTarget.setPointerCapture(event.pointerId);
-        } catch {
-          /* optional */
-        }
-      }}
-      onPointerMove={(event) => {
-        const current = drag.current;
-        if (!current) return;
-        setPan({ x: current.panX + event.clientX - current.x, y: current.panY + event.clientY - current.y });
-      }}
-      onPointerUp={() => {
-        drag.current = null;
-      }}
-      onPointerCancel={() => {
-        drag.current = null;
-      }}
+      role="application"
+      aria-label="Map of nearby film locations. Drag to move, pinch or scroll to zoom."
     >
       <div
         className="absolute inset-0"

@@ -5,6 +5,7 @@ import { freshPicks, loadFilm, placePhotos, sceneFrames, streetView, suggestMovi
 import { GOOD_FAVES, shuffleNine } from "@/lib/good-faves";
 import type { Dossier, FilmLocation, PlacePhoto, Still, StreetViewHit, Suggestion } from "@/lib/film-types";
 import { asset, panoUrl, tileUrl } from "@/lib/static-host";
+import { useMapGestures, type MapPan } from "@/lib/map-gestures";
 
 let sharedAudio: AudioContext | null = null;
 
@@ -829,8 +830,6 @@ function LocationMap({
   const frameRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
   const [frame, setFrame] = useState({ w: 1, h: 1 });
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const drag = useRef<{ x: number; y: number; panX: number; panY: number; moved: boolean } | null>(null);
 
   const allView = useMemo(() => {
     if (!showAll || places.length === 0) return null;
@@ -870,10 +869,6 @@ function LocationMap({
   }, [showAll, places, frame.w, frame.h]);
 
   useEffect(() => {
-    setPan({ x: 0, y: 0 });
-  }, [showAll, placeKey]);
-
-  useEffect(() => {
     const el = frameRef.current;
     if (!el) return;
     const fit = () => {
@@ -889,25 +884,39 @@ function LocationMap({
     return () => observer.disconnect();
   }, [box, showAll]);
 
-  function clampPan(next: { x: number; y: number }) {
+  function clampPan(next: MapPan, userZoom: number) {
     if (!box || showAll) return next;
-    const minX = frame.w / 2 - (box.size - box.pinLeft) * scale;
-    const maxX = box.pinLeft * scale - frame.w / 2;
-    const minY = frame.h / 2 - (box.size - box.pinTop) * scale;
-    const maxY = box.pinTop * scale - frame.h / 2;
+    const ox = frame.w / 2;
+    const oy = frame.h / 2;
+    const minX = frame.w - ox - (box.size - box.pinLeft) * scale * userZoom;
+    const maxX = box.pinLeft * scale * userZoom - ox;
+    const minY = frame.h - oy - (box.size - box.pinTop) * scale * userZoom;
+    const maxY = box.pinTop * scale * userZoom - oy;
+    if (minX > maxX || minY > maxY) return { x: 0, y: 0 };
     return {
       x: Math.min(maxX, Math.max(minX, next.x)),
       y: Math.min(maxY, Math.max(minY, next.y)),
     };
   }
 
+  const { zoom: userZoom, pan } = useMapGestures(frameRef, {
+    minZoom: 1,
+    maxZoom: 4,
+    resetKey: `${showAll}|${placeKey}`,
+    clampPan,
+    ignorePointer: (target) => Boolean((target as HTMLElement | null)?.closest?.("button")),
+    onTap: () => {
+      if (!showAll && loc) window.open(googlePinHref(loc), "_blank", "noopener,noreferrer");
+    },
+  });
+
   function placePoint(lat: number, lng: number) {
     if (!allView) return { left: 0, top: 0 };
     const fx = lonTile(lng, allView.zoom);
     const fy = latTile(lat, allView.zoom);
     return {
-      left: frame.w / 2 + pan.x + (fx - allView.cx) * 256 * allView.scale,
-      top: frame.h / 2 + pan.y + (fy - allView.cy) * 256 * allView.scale,
+      left: frame.w / 2 + (fx - allView.cx) * 256 * allView.scale,
+      top: frame.h / 2 + (fy - allView.cy) * 256 * allView.scale,
     };
   }
 
@@ -945,43 +954,22 @@ function LocationMap({
         role="application"
         aria-label={
           showAll
-            ? `Pins for every filmed spot in this movie. Drag to move. The larger pin is ${loc.name}.`
-            : `Map of ${loc.name}. Drag to move around. Click to open this pin in Google Maps.`
+            ? `Pins for every filmed spot in this movie. Drag to move, pinch or scroll to zoom. The larger pin is ${loc.name}.`
+            : `Map of ${loc.name}. Drag to move, pinch or scroll to zoom. Click to open this pin in Google Maps.`
         }
         className="relative mt-3 h-80 cursor-grab touch-none overflow-hidden rounded-md border border-line bg-surface select-none active:cursor-grabbing md:h-96"
-        onPointerDown={(event) => {
-          if ((event.target as HTMLElement).closest("button")) return;
-          drag.current = { x: event.clientX, y: event.clientY, panX: pan.x, panY: pan.y, moved: false };
-          try {
-            event.currentTarget.setPointerCapture(event.pointerId);
-          } catch {
-            /* pointer capture is optional */
-          }
-        }}
-        onPointerMove={(event) => {
-          const current = drag.current;
-          if (!current) return;
-          const dx = event.clientX - current.x;
-          const dy = event.clientY - current.y;
-          if (Math.hypot(dx, dy) > 5) current.moved = true;
-          setPan(showAll ? { x: current.panX + dx, y: current.panY + dy } : clampPan({ x: current.panX + dx, y: current.panY + dy }));
-        }}
-        onPointerUp={() => {
-          const moved = drag.current?.moved;
-          drag.current = null;
-          if (!moved && !showAll) window.open(pinLink, "_blank", "noopener,noreferrer");
-        }}
-        onPointerCancel={() => {
-          drag.current = null;
-        }}
       >
+        <div
+          className="absolute inset-0"
+          style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${userZoom})`, transformOrigin: "center center" }}
+        >
         {!showAll && box && (
           <div
             className="absolute top-1/2 left-1/2"
             style={{
               width: box.size,
               height: box.size,
-              transform: `translate(${pan.x - box.pinLeft * scale}px, ${pan.y - box.pinTop * scale}px) scale(${scale})`,
+              transform: `translate(${-box.pinLeft * scale}px, ${-box.pinTop * scale}px) scale(${scale})`,
               transformOrigin: "0 0",
             }}
           >
@@ -1006,7 +994,7 @@ function LocationMap({
             style={{
               width: allView.width,
               height: allView.height,
-              transform: `translate(${pan.x + (allView.x0 - allView.cx) * 256 * allView.scale}px, ${pan.y + (allView.y0 - allView.cy) * 256 * allView.scale}px) scale(${allView.scale})`,
+              transform: `translate(${(allView.x0 - allView.cx) * 256 * allView.scale}px, ${(allView.y0 - allView.cy) * 256 * allView.scale}px) scale(${allView.scale})`,
               transformOrigin: "0 0",
             }}
           >
@@ -1058,7 +1046,7 @@ function LocationMap({
           : (
             <span
               className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-full"
-              style={{ left: `calc(50% + ${pan.x}px)`, top: `calc(50% + ${pan.y}px)` }}
+              style={{ left: "50%", top: "50%" }}
             >
               <svg viewBox="0 0 24 36" className="h-14 w-10 drop-shadow-md" aria-hidden="true">
                 <path
@@ -1069,7 +1057,8 @@ function LocationMap({
               </svg>
             </span>
           )}
-        <p className="pointer-events-none absolute right-2 bottom-2 rounded-sm bg-bg/90 px-1.5 py-0.5 text-xs text-muted">
+        </div>
+        <p className="pointer-events-none absolute right-2 bottom-2 z-20 rounded-sm bg-bg/90 px-1.5 py-0.5 text-xs text-muted">
           Map data © Google
         </p>
       </div>

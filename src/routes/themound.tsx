@@ -1,31 +1,33 @@
+import { useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { MoundApp } from "@/components/mound-app";
-import { MoundGate } from "@/components/mound-gate";
+
+const DEST = "https://dedomenici.github.io/themound";
 
 export const Route = createFileRoute("/themound")({
   head: () => ({
     meta: [
-      { title: "The Mound" },
-      {
-        name: "description",
-        content: "A dating app for the Edinburgh Fringe shame spiral. Which bar, what time, what to say.",
-      },
-      { name: "theme-color", content: "#1a1410" },
-    ],
-    links: [
-      {
-        rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,560;9..144,650&family=Outfit:wght@400;600&display=swap",
-      },
+      { title: "The Mound has moved" },
+      { httpEquiv: "refresh", content: `0; url=${DEST}/` },
     ],
   }),
-  component: TheMound,
+  component: RedirectTheMound,
 });
 
-function TheMound() {
+function moundDestination() {
+  const path = window.location.pathname;
+  const rest = path.replace(/^(?:\/redux)?\/themound/, "") || "/";
+  return DEST + (rest.startsWith("/") ? rest : `/${rest}`) + window.location.search + window.location.hash;
+}
+
+function RedirectTheMound() {
+  useEffect(() => {
+    window.location.replace(moundDestination());
+  }, []);
+  const href = typeof window === "undefined" ? `${DEST}/` : moundDestination();
   return (
-    <MoundGate>
-      <MoundApp />
-    </MoundGate>
+    <p style={{ padding: "2rem", fontFamily: "Outfit, sans-serif" }}>
+      The Mound has moved to{" "}
+      <a href={href}>{DEST}/</a>.
+    </p>
   );
 }

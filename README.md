@@ -6,7 +6,7 @@ Live on GitHub Pages: https://dedomenici.github.io/redux/
 
 - `/` and `/locations`: the finder
 - `/near`: movie locations near you (or near a place you type)
-- `/themound`: The Mound
+- The Mound now lives at https://dedomenici.github.io/themound/ (`/themound` and `/mound` redirect there)
 
 ## Run it
 
