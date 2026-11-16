@@ -5,7 +5,7 @@ import { freshPicks, loadFilm, placePhotos, sceneFrames, streetView, suggestMovi
 import { GOOD_FAVES, shuffleNine } from "@/lib/good-faves";
 import type { Dossier, FilmLocation, PlacePhoto, Still, StreetViewHit, Suggestion } from "@/lib/film-types";
 import { asset, panoUrl, tileUrl } from "@/lib/static-host";
-import { useMapGestures, type MapPan } from "@/lib/map-gestures";
+import { fitView, layerTransform, MIN_MAP_ZOOM, useSlippyMap } from "@/lib/map-gestures";
 
 let sharedAudio: AudioContext | null = null;
 
@@ -749,15 +749,6 @@ function LocationReel() {
   );
 }
 
-function lonTile(lon: number, z: number) {
-  return ((lon + 180) / 360) * 2 ** z;
-}
-
-function latTile(lat: number, z: number) {
-  const r = (lat * Math.PI) / 180;
-  return ((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * 2 ** z;
-}
-
 function placeBlurb(place: FilmLocation) {
   return [place.category, place.country].filter(Boolean).join(" · ");
 }
@@ -802,127 +793,27 @@ function LocationMap({
     setShowAll(false);
   }, [placeKey]);
 
-  const zoom = 16;
-  const box = useMemo(() => {
-    if (!loc || showAll) return null;
-    const fx = lonTile(loc.lng, zoom);
-    const fy = latTile(loc.lat, zoom);
-    const span = 5;
-    const x0 = Math.floor(fx) - 2;
-    const y0 = Math.floor(fy) - 2;
-    const tiles: { x: number; y: number }[] = [];
-    for (let x = x0; x < x0 + span; x += 1) {
-      for (let y = y0; y < y0 + span; y += 1) {
-        if (x >= 0 && y >= 0 && x < 2 ** zoom && y < 2 ** zoom) tiles.push({ x, y });
-      }
-    }
-    const size = span * 256;
-    return {
-      tiles,
-      x0,
-      y0,
-      size,
-      pinLeft: (fx - x0) * 256,
-      pinTop: (fy - y0) * 256,
-    };
-  }, [loc, showAll]);
-
   const frameRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(1);
-  const [frame, setFrame] = useState({ w: 1, h: 1 });
-
-  const allView = useMemo(() => {
-    if (!showAll || places.length === 0) return null;
-    let z = 15;
-    const lats = places.map((place) => place.lat);
-    const lngs = places.map((place) => place.lng);
-    const minLat = Math.min(...lats);
-    const maxLat = Math.max(...lats);
-    const minLng = Math.min(...lngs);
-    const maxLng = Math.max(...lngs);
-    const latSpan = Math.max(maxLat - minLat, 0.01);
-    const lngSpan = Math.max(maxLng - minLng, 0.01);
-    const minLatPad = minLat - latSpan * 0.35;
-    const maxLatPad = maxLat + latSpan * 0.35;
-    const minLngPad = minLng - lngSpan * 0.35;
-    const maxLngPad = maxLng + lngSpan * 0.35;
-    while (z > 3) {
-      const dx = Math.abs(lonTile(maxLngPad, z) - lonTile(minLngPad, z));
-      const dy = Math.abs(latTile(maxLatPad, z) - latTile(minLatPad, z));
-      if (dx <= 3.2 && dy <= 2.4) break;
-      z -= 1;
-    }
-    const cx = lonTile((minLng + maxLng) / 2, z);
-    const cy = latTile((minLat + maxLat) / 2, z);
-    const spanX = 5;
-    const spanY = 4;
-    const x0 = Math.floor(cx) - 2;
-    const y0 = Math.floor(cy) - 2;
-    const tiles: { x: number; y: number }[] = [];
-    for (let x = x0; x < x0 + spanX; x += 1) {
-      for (let y = y0; y < y0 + spanY; y += 1) {
-        if (x >= 0 && y >= 0 && x < 2 ** z && y < 2 ** z) tiles.push({ x, y });
-      }
-    }
-    const fit = Math.max(frame.w / (spanX * 256), frame.h / (spanY * 256));
-    return { zoom: z, cx, cy, x0, y0, tiles, scale: fit, width: spanX * 256, height: spanY * 256 };
-  }, [showAll, places, frame.w, frame.h]);
-
-  useEffect(() => {
-    const el = frameRef.current;
-    if (!el) return;
-    const fit = () => {
-      const w = el.clientWidth;
-      const h = el.clientHeight;
-      if (!w || !h) return;
-      setFrame({ w, h });
-      if (!showAll) setScale(w / (2.6 * 256));
-    };
-    fit();
-    const observer = new ResizeObserver(fit);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [box, showAll]);
-
-  function clampPan(next: MapPan, userZoom: number) {
-    if (!box || showAll) return next;
-    const ox = frame.w / 2;
-    const oy = frame.h / 2;
-    const minX = frame.w - ox - (box.size - box.pinLeft) * scale * userZoom;
-    const maxX = box.pinLeft * scale * userZoom - ox;
-    const minY = frame.h - oy - (box.size - box.pinTop) * scale * userZoom;
-    const maxY = box.pinTop * scale * userZoom - oy;
-    if (minX > maxX || minY > maxY) return { x: 0, y: 0 };
-    return {
-      x: Math.min(maxX, Math.max(minX, next.x)),
-      y: Math.min(maxY, Math.max(minY, next.y)),
-    };
-  }
-
-  const { zoom: userZoom, pan } = useMapGestures(frameRef, {
-    minZoom: 1,
-    maxZoom: 4,
-    resetKey: `${showAll}|${placeKey}`,
-    clampPan,
+  const { zoom, setZoom, frame, view, project, minZoom, maxZoom } = useSlippyMap(frameRef, {
+    minZoom: MIN_MAP_ZOOM,
+    maxZoom: 20,
+    resetKey: `${showAll}|${showAll ? placeKey : (loc?.id ?? "")}`,
+    getInitialView: (size) => {
+      if (showAll && places.length) return fitView(places, size.w, size.h, 0.35, 15, MIN_MAP_ZOOM, 20);
+      if (loc) return { center: { lat: loc.lat, lng: loc.lng }, zoom: 16 };
+      return { center: { lat: 0, lng: 0 }, zoom: 16 };
+    },
     ignorePointer: (target) => Boolean((target as HTMLElement | null)?.closest?.("button")),
     onTap: () => {
       if (!showAll && loc) window.open(googlePinHref(loc), "_blank", "noopener,noreferrer");
     },
   });
 
-  function placePoint(lat: number, lng: number) {
-    if (!allView) return { left: 0, top: 0 };
-    const fx = lonTile(lng, allView.zoom);
-    const fy = latTile(lat, allView.zoom);
-    return {
-      left: frame.w / 2 + (fx - allView.cx) * 256 * allView.scale,
-      top: frame.h / 2 + (fy - allView.cy) * 256 * allView.scale,
-    };
-  }
-
-  if (!loc || (!showAll && !box)) return null;
+  if (!loc) return null;
   const lyrs = satellite ? "y" : "m";
   const pinLink = googlePinHref(loc);
+  const width = frame.w || 1;
+  const height = frame.h || 1;
 
   return (
     <section aria-labelledby="location-map">
@@ -960,62 +851,33 @@ function LocationMap({
         className="relative mt-3 h-80 cursor-grab touch-none overflow-hidden rounded-md border border-line bg-surface select-none active:cursor-grabbing md:h-96"
       >
         <div
-          className="absolute inset-0"
-          style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${userZoom})`, transformOrigin: "center center" }}
+          className="absolute top-0 left-0"
+          data-map-layer="tiles"
+          data-tile-zoom={view.zInt}
+          style={{
+            width: 0,
+            height: 0,
+            transform: layerTransform(view, width, height),
+            transformOrigin: "0 0",
+          }}
         >
-        {!showAll && box && (
-          <div
-            className="absolute top-1/2 left-1/2"
-            style={{
-              width: box.size,
-              height: box.size,
-              transform: `translate(${-box.pinLeft * scale}px, ${-box.pinTop * scale}px) scale(${scale})`,
-              transformOrigin: "0 0",
-            }}
-          >
-            {box.tiles.map((tile) => (
-              <img
-                key={`${lyrs}-${tile.x}-${tile.y}`}
-                alt=""
-                width={256}
-                height={256}
-                draggable={false}
-                className="pointer-events-none absolute"
-                referrerPolicy="no-referrer"
-                style={{ left: (tile.x - box.x0) * 256, top: (tile.y - box.y0) * 256 }}
-                src={tileUrl(zoom, tile.x, tile.y, lyrs)}
-              />
-            ))}
-          </div>
-        )}
-        {showAll && allView && (
-          <div
-            className="absolute top-1/2 left-1/2"
-            style={{
-              width: allView.width,
-              height: allView.height,
-              transform: `translate(${(allView.x0 - allView.cx) * 256 * allView.scale}px, ${(allView.y0 - allView.cy) * 256 * allView.scale}px) scale(${allView.scale})`,
-              transformOrigin: "0 0",
-            }}
-          >
-            {allView.tiles.map((tile) => (
-              <img
-                key={`${lyrs}-${tile.x}-${tile.y}`}
-                alt=""
-                width={256}
-                height={256}
-                draggable={false}
-                className="pointer-events-none absolute"
-                referrerPolicy="no-referrer"
-                style={{ left: (tile.x - allView.x0) * 256, top: (tile.y - allView.y0) * 256 }}
-                src={tileUrl(allView.zoom, tile.x, tile.y, lyrs)}
-              />
-            ))}
-          </div>
-        )}
+          {view.tiles.map((tile) => (
+            <img
+              key={`${view.zInt}-${lyrs}-${tile.left}-${tile.y}`}
+              alt=""
+              width={256}
+              height={256}
+              draggable={false}
+              className="pointer-events-none absolute"
+              referrerPolicy="no-referrer"
+              style={{ left: tile.left, top: tile.top }}
+              src={tileUrl(view.zInt, tile.x, tile.y, lyrs)}
+            />
+          ))}
+        </div>
         {showAll
           ? places.map((place) => {
-              const pos = placePoint(place.lat, place.lng);
+              const pos = project(place);
               const on = place.id === loc.id;
               return (
                 <button
@@ -1046,7 +908,7 @@ function LocationMap({
           : (
             <span
               className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-full"
-              style={{ left: "50%", top: "50%" }}
+              style={{ left: project(loc).left, top: project(loc).top }}
             >
               <svg viewBox="0 0 24 36" className="h-14 w-10 drop-shadow-md" aria-hidden="true">
                 <path
@@ -1057,6 +919,25 @@ function LocationMap({
               </svg>
             </span>
           )}
+        <div className="absolute top-2 right-2 z-20 flex flex-col overflow-hidden rounded-md border border-line bg-bg/90">
+          <button
+            type="button"
+            aria-label="Zoom in"
+            className="inline-flex min-h-11 min-w-11 items-center justify-center text-lg leading-none"
+            disabled={zoom >= maxZoom}
+            onClick={() => setZoom(zoom + 1)}
+          >
+            +
+          </button>
+          <button
+            type="button"
+            aria-label="Zoom out"
+            className="inline-flex min-h-11 min-w-11 items-center justify-center border-t border-line text-lg leading-none"
+            disabled={zoom <= minZoom}
+            onClick={() => setZoom(zoom - 1)}
+          >
+            −
+          </button>
         </div>
         <p className="pointer-events-none absolute right-2 bottom-2 z-20 rounded-sm bg-bg/90 px-1.5 py-0.5 text-xs text-muted">
           Map data © Google
