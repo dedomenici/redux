@@ -309,6 +309,16 @@ function NearPage() {
                           >
                             map
                           </a>
+                          {/^https?:\/\//.test(spot.page) && (
+                            <a
+                              className="text-muted underline decoration-line underline-offset-4"
+                              href={spot.page}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              source
+                            </a>
+                          )}
                         </div>
                       </li>
                     );
