@@ -1,15 +1,15 @@
 # Kaohsiung Redux shortlist
 
-Ranked by how iconic the scene is and how easy the place is to use in public. Coordinates and sources are in `taiwan_film_locations.csv`, and every pin is also on the app's near-you page (branch `taiwan-locations`).
+Ranked by how iconic the scene is and how easy the place is to use in public. Coordinates and sources are in `taiwan_film_locations.csv`, and every pin is also on the app's near-you page (https://dedomenici.github.io/redux-movie-location-finder/near — type Kaohsiung).
 
 1. **Huangpu New Village, Fengshan** () · 22.61783, 120.36427  
    Scene: Detention 返校 (2019): 1960s martial-law dorms and streets; also 鬥魚, Mr. Long 龍先生 and 四月望雨  
    Why: Open, preserved first-generation military village opposite the Military Academy, with streets you can walk freely. Easy Redux of the Detention corridors and alleys, or the Mr. Long noodle-stall life.  
    Sources: https://www.filmkh.org/tc/teams_detail?tm_sn=119 · https://www.filmkh.org/tc/teams_detail?tm_sn=134 · https://www.filmkh.org/tc/teams_detail?tm_sn=272
-2. **Dragon and Tiger Pagodas, Lotus Pond, Zuoying** (蓮池潭龍虎塔) · 22.68051, 120.29238  
-   Scene: The Wayward Cloud 天邊一朵雲 (2005): Tsai Ming-liang's camp musical numbers; also the 1959 comedy 王哥柳哥遊台灣 at the nearby Spring & Autumn Pavilions  
-   Why: Free public landmark, very photogenic. A musical number is a perfect participatory Redux.  
-   Sources: https://www.walkerland.com.tw/article/view/80448
+2. **Dragon and Tiger Pagodas and Spring & Autumn Pavilions, Lotus Pond, Zuoying** (蓮池潭龍虎塔、春秋閣) · 22.68051, 120.29238 and 22.68225, 120.29283  
+   Scene: The Wayward Cloud 天邊一朵雲 (2005): musical number 奇妙的約會 at the pagodas (watermelon-umbrella dance); Tsai said he chose the Spring & Autumn Pavilions for the 'sweet love' musical numbers. The 1959 comedy 王哥柳哥遊台灣 also used the pavilions. A shorter non-musical scene was shot on the nearby lakeside steps (approximate).  
+   Why: Free public landmark, very photogenic. A musical number is a perfect participatory Redux. Further *Wayward Cloud* pins sit about 3 km south at Riverside Park and its Light Bridges (including the loop-shaped 指環橋), where Shiang-chyi finds a watermelon and the couple reunite. The apartment interiors in 河堤社區 were not pinned — the exact building is unidentified.  
+   Sources: https://www.kff.tw/content/2020-11 · https://takao.kcg.gov.tw/article/1461 · https://www.walkerland.com.tw/article/view/80448
 3. **Love Pier** (真愛碼頭) · 22.61926, 120.28943  
    Scene: Black & White 痞子英雄: the “South District Police Station” of Harbour City; also Uma 酷馬 and Kingfisher 魚狗  
    Why: Public waterfront where the Love River meets the harbour. Cop-show swagger, chases and stand-offs.  
