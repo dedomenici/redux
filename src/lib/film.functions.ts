@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { createServerFn } from "@tanstack/react-start";
 import { GOOD_FAVES, shuffleNine } from "@/lib/good-faves";
+import { TAIWAN_SPOTS } from "@/lib/taiwan-locations";
 var UA = "OnLocation/1.0 (film street explorer)";
 var ATLAS = "https://moviescenemap.com/mcp";
 var dossierCache = /* @__PURE__ */ new Map();
@@ -973,7 +974,9 @@ async function geocodeQuery(q) {
 	return value;
 }
 function samePin(a, b) {
-	return norm(a.name) === norm(b.name) || Math.abs(a.lat - b.lat) < 0.002 && Math.abs(a.lng - b.lng) < 0.002;
+	// norm() drops non-Latin text, so an all-Chinese name normalises to "" — never treat two empty keys as a match.
+	const key = norm(a.name);
+	return key !== "" && key === norm(b.name) || Math.abs(a.lat - b.lat) < 0.002 && Math.abs(a.lng - b.lng) < 0.002;
 }
 async function guidePlaces(data) {
 	const [maps, guideQs, reelQs] = await Promise.all([
@@ -1008,6 +1011,105 @@ async function guidePlaces(data) {
 	}
 	return located.slice(0, 12);
 }
+
+function twKey(s) {
+	return String(s || "").toLowerCase().normalize("NFKC").replace(/[^a-z0-9\u3400-\u9fff\u3040-\u30ff]+/g, "");
+}
+function twDistanceKm(lat1, lng1, lat2, lng2) {
+	const r = Math.PI / 180;
+	const a = Math.sin((lat2 - lat1) * r / 2) ** 2 + Math.cos(lat1 * r) * Math.cos(lat2 * r) * Math.sin((lng2 - lng1) * r / 2) ** 2;
+	return 12742 * Math.asin(Math.sqrt(a));
+}
+function twCreditMatches(credit, title, year) {
+	const want = twKey(title);
+	if (!want) return false;
+	const zh = credit.titleZh && twKey(credit.titleZh) === want;
+	const en = twKey(credit.title) === want;
+	if (!zh && !en) return false;
+	if (credit.year && year) return Math.abs(credit.year - year) <= 1;
+	// Without a year on our record, only trust an exact Chinese-title match.
+	if (!credit.year) return zh;
+	return en || zh;
+}
+/** Curated Taiwan pins for one film, in the dossier's FilmLocation shape. */
+function taiwanFilmLocations(data) {
+	const out = [];
+	for (const spot of TAIWAN_SPOTS) {
+		const credit = spot.films.find((film) => twCreditMatches(film, data.title, data.year));
+		if (!credit) continue;
+		out.push({
+			id: `tw:${spot.id}`,
+			name: spot.nameZh && spot.nameZh !== spot.name ? `${spot.name} (${spot.nameZh})` : spot.name,
+			country: "Taiwan",
+			category: "Filming location",
+			precision: spot.precision === "street" ? "street" : "exact",
+			source: "guide",
+			lat: spot.lat,
+			lng: spot.lng,
+			address: [spot.nameZh || spot.name, spot.city, "Taiwan"].filter(Boolean).join(", "),
+			scene: credit.scene || void 0,
+			precisionNote: `Taiwan location list (${credit.confidence} confidence) · source: ${credit.source}`
+		});
+	}
+	return out;
+}
+/** Curated Taiwan spots within a radius, in the near-you NearbySpot shape. */
+function taiwanNearby(lat, lng, radiusKm) {
+	const out = [];
+	for (const spot of TAIWAN_SPOTS) {
+		// A whole-road pin is too vague for a near-you card; those stay on the film pages only.
+		if (spot.precision === "street") continue;
+		const d = twDistanceKm(lat, lng, spot.lat, spot.lng);
+		if (d > radiusKm) continue;
+		const filmCredits = spot.films.map((film) => {
+			const label = film.titleZh && film.titleZh !== film.title ? `${film.title} ${film.titleZh}` : film.title;
+			return film.year ? `${label} (${film.year})` : label;
+		});
+		const withScene = spot.films.find((film) => film.scene);
+		out.push({
+			id: spot.id,
+			name: spot.nameZh && spot.nameZh !== spot.name ? `${spot.name} · ${spot.nameZh}` : spot.name,
+			country: "Taiwan",
+			category: spot.films.some((film) => film.kind === "film") ? "Filming location" : "TV location",
+			precision: spot.precision,
+			lat: spot.lat,
+			lng: spot.lng,
+			distanceKm: Math.round(d * 10) / 10,
+			films: spot.films.map((film) => (film.year ? `${film.title} (${film.year})` : film.title)),
+			credits: filmCredits.slice(0, 4).join(", "),
+			filmCredits,
+			scene: withScene ? withScene.scene : "",
+			page: spot.films[0]?.source || "",
+			image: void 0,
+			imageCaption: spot.films[0]?.title || spot.name
+		});
+	}
+	return out.sort((a, b) => a.distanceKm - b.distanceKm);
+}
+/** Places with no titles on record sort as if 0.75 km further away, so filmed places win the 40 slots. */
+function twRank(spot) {
+	return spot.distanceKm + ((spot.films ?? []).length ? 0 : 0.75);
+}
+/** Fold curated Taiwan spots into atlas results: same place within 150 m gains the extra titles. */
+function mergeTaiwanSpots(spots, extra) {
+	const merged = spots.map((spot) => ({ ...spot }));
+	for (const add of extra) {
+		const twin = merged.find((spot) => twDistanceKm(spot.lat, spot.lng, add.lat, add.lng) < 0.15);
+		if (!twin) {
+			merged.push(add);
+			continue;
+		}
+		const bare = (t) => twKey(String(t).replace(/\s*\(\d{4}\)$/, ""));
+		const have = new Set((twin.films ?? []).map(bare));
+		const fresh = add.films.filter((t) => !have.has(bare(t)));
+		if (!fresh.length) continue;
+		twin.films = [...(twin.films ?? []), ...fresh];
+		twin.filmCredits = [...(twin.filmCredits ?? []), ...add.filmCredits.filter((c, i) => !have.has(bare(add.films[i])))];
+		twin.credits = twin.filmCredits.slice(0, 4).join(", ");
+		if (!twin.scene && add.scene) twin.scene = add.scene;
+	}
+	return merged;
+}
 function preferPlaces(guides, rest) {
 	const out = [];
 	for (const loc of [...guides, ...rest]) {
@@ -1036,7 +1138,7 @@ export const loadFilm = createServerFn({ method: "POST" }).validator((input) => 
 		qid: String(raw.qid ?? "movie").slice(0, 40)
 	};
 }).handler(async ({ data }) => {
-	const hit = fresh(dossierCache.get(`v9:${data.imdbId}`));
+	const hit = fresh(dossierCache.get(`v10:${data.imdbId}`));
 	if (hit) return hit;
 	const guidesTask = guidePlaces(data).catch(() => []);
 	const kind = /tv/i.test(data.qid) ? "tv" : "film";
@@ -1089,7 +1191,7 @@ export const loadFilm = createServerFn({ method: "POST" }).validator((input) => 
 	let locations = dedupeLocations(rawPlaces.map((p) => toLocation(p, "wikidata", sentences)).filter((loc) => Boolean(loc)));
 	if (!locations.length) locations = dedupeLocations(rawPlaces.map((p) => toTown(p)).filter((loc) => Boolean(loc)));
 	if (!locations.length) locations = await wikiLinkedPlaces(wiki.pageUrl ? wikiTitleFromUrl(wiki.pageUrl) : wikiTitle).catch(() => []);
-	locations = preferPlaces(await guidesTask, locations);
+	locations = preferPlaces([...taiwanFilmLocations(data), ...(await guidesTask)], locations);
 	const stills = [];
 	for (const still of wiki.stills) {
 		if (stills.length >= 6) break;
@@ -1114,7 +1216,7 @@ export const loadFilm = createServerFn({ method: "POST" }).validator((input) => 
 		atlasName: atlas?.name
 	};
 	if (!locations.length && atlasError) dossier.filmingNotes = ["The location atlas didn't answer, so there are no pins yet. IMDb's own locations page is linked above.", ...dossier.filmingNotes];
-	else if (!wikiFailed) dossierCache.set(`v9:${data.imdbId}`, {
+	else if (!wikiFailed) dossierCache.set(`v10:${data.imdbId}`, {
 		at: Date.now(),
 		value: dossier
 	});
@@ -2357,15 +2459,22 @@ export const nearbyFilms = createServerFn({ method: "POST" }).validator((input) 
 	if (!Number.isFinite(miles) || miles < 0 || miles > 100) throw new Error("Pick a distance from 0 to 100 miles.");
 	return { lat, lng, radiusKm: Math.max(1, miles * 1.609344) };
 }).handler(async ({ data }) => {
-	const key = `v7|${data.lat.toFixed(2)}|${data.lng.toFixed(2)}|${data.radiusKm.toFixed(1)}`;
+	const key = `v8|${data.lat.toFixed(2)}|${data.lng.toFixed(2)}|${data.radiusKm.toFixed(1)}`;
 	const cached = fresh(nearCache.get(key));
 	if (cached) return cached;
-	const raw = await mcp("locations_near", {
-		latitude: data.lat,
-		longitude: data.lng,
-		radius_km: data.radiusKm,
-		limit: 40
-	});
+	const taiwan = taiwanNearby(data.lat, data.lng, data.radiusKm);
+	let raw;
+	try {
+		raw = await mcp("locations_near", {
+			latitude: data.lat,
+			longitude: data.lng,
+			radius_km: data.radiusKm,
+			limit: 40
+		});
+	} catch (err) {
+		if (!taiwan.length) throw err;
+		raw = { results: [], total_within_radius: 0 };
+	}
 	const rows = (raw.results ?? []).filter((row) => row.name && Number.isFinite(row.latitude) && Number.isFinite(row.longitude)).sort((a, b) => (a.distance_km ?? 999) - (b.distance_km ?? 999));
 	const specific = rows.filter((row) => !["region", "fiction", "city"].includes(row.category ?? ""));
 	const ranked = (specific.length >= 4 ? specific : rows).slice(0, 16);
@@ -2405,9 +2514,10 @@ export const nearbyFilms = createServerFn({ method: "POST" }).validator((input) 
 			imageCaption: filmed[0]?.title || row.name
 		};
 	});
+	const merged = taiwan.length ? mergeTaiwanSpots(spots, taiwan).sort((a, b) => twRank(a) - twRank(b)).slice(0, 40) : spots;
 	const value = {
-		total: raw.total_within_radius ?? spots.length,
-		spots
+		total: (raw.total_within_radius ?? spots.length) + taiwan.length,
+		spots: merged
 	};
 	nearCache.set(key, {
 		at: Date.now(),

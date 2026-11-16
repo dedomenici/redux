@@ -128,8 +128,14 @@ function titlePending(title: string): Suggestion {
   return { imdbId: "", title, kind: "movie", qid: "movie", cast: "", director: "" };
 }
 
-function pickSuggestion(rows: Suggestion[], query: string): Suggestion | undefined {
+function pickSuggestion(rows: Suggestion[], query: string, year?: number): Suggestion | undefined {
   if (!rows.length) return undefined;
+  if (year) {
+    const dated = rows.find(
+      (row) => row.title.toLowerCase() === query.toLowerCase() && row.year && Math.abs(row.year - year) <= 1,
+    );
+    if (dated) return dated;
+  }
   const q = query.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
   const eightyFour = q === "1984" || q === "nineteen eighty four";
   if (eightyFour) {
@@ -372,8 +378,12 @@ export function Explorer({ initialFilm = "", picks = [] }: { initialFilm?: strin
     setFilm(null);
     setPending(titlePending(title));
     try {
+      // "Title (2019)" links (from the near-you page) pin the year.
+      const dated = title.match(/^(.*\S)\s*\((\d{4})\)$/);
+      const base = dated ? dated[1] : title;
+      const year = dated ? Number(dated[2]) : undefined;
       const cached = suggestCache.current.get(title.toLowerCase());
-      const hit = cached ?? pickSuggestion(await suggestMovies({ data: { q: title } }), title);
+      const hit = cached ?? pickSuggestion(await suggestMovies({ data: { q: base } }), base, year);
       if (!hit) {
         setError("No IMDb match.");
         setPending(null);
