@@ -19,7 +19,7 @@ import viteReact from "@vitejs/plugin-react";
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = resolve(here, "dist-pages");
 // Project pages live under /<repo>/. Override with PAGES_BASE=/ for a custom domain.
-const base = process.env.PAGES_BASE ?? "/redux-movie-location-finder/";
+const base = process.env.PAGES_BASE ?? "/redux/";
 const ROUTES = ["locations", "near", "themound", "mound", "dedomenici", "dedomenici2"];
 
 function staticServerFunctions(): Plugin {

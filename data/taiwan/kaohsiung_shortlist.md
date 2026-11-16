@@ -1,6 +1,6 @@
 # Kaohsiung Redux shortlist
 
-Ranked by how iconic the scene is and how easy the place is to use in public. Coordinates and sources are in `taiwan_film_locations.csv`, and every pin is also on the app's near-you page (https://dedomenici.github.io/redux-movie-location-finder/near — type Kaohsiung).
+Ranked by how iconic the scene is and how easy the place is to use in public. Coordinates and sources are in `taiwan_film_locations.csv`, and every pin is also on the app's near-you page (https://dedomenici.github.io/redux/near — type Kaohsiung).
 
 1. **Huangpu New Village, Fengshan** () · 22.61783, 120.36427  
    Scene: Detention 返校 (2019): 1960s martial-law dorms and streets; also 鬥魚, Mr. Long 龍先生 and 四月望雨  

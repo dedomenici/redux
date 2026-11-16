@@ -2,7 +2,7 @@
 
 Search an IMDb title, scan the street where it was filmed, and compare a still with the real place.
 
-Live on GitHub Pages: https://dedomenici.github.io/redux-movie-location-finder/
+Live on GitHub Pages: https://dedomenici.github.io/redux/
 
 - `/` and `/locations`: the finder
 - `/near`: movie locations near you (or near a place you type)

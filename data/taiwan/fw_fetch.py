@@ -5,7 +5,7 @@ from pathlib import Path
 DIR = Path('/workspace/taiwan-film-locations/fw')
 DIR.mkdir(exist_ok=True)
 urls = json.load(open('/workspace/taiwan-film-locations/fw_urls.json'))
-UA = {'User-Agent': 'ReduxTaiwanHarvest/1.0 (research for dedomenici redux project; +https://github.com/dedomenici/redux-movie-location-finder)'}
+UA = {'User-Agent': 'ReduxTaiwanHarvest/1.0 (research for dedomenici redux project; +https://github.com/dedomenici/redux)'}
 
 def slug(url):
     return url.replace('https://','').replace('http://','').replace('/','_')[:180] + '.html'
