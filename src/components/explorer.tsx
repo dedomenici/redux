@@ -6,6 +6,7 @@ import { GOOD_FAVES, shuffleNine } from "@/lib/good-faves";
 import type { Dossier, FilmLocation, PlacePhoto, Still, StreetViewHit, Suggestion } from "@/lib/film-types";
 import { asset, panoUrl, tileUrl } from "@/lib/static-host";
 import { fitView, layerTransform, MIN_MAP_ZOOM, useSlippyMap } from "@/lib/map-gestures";
+import { gcSearch } from "@/lib/goatcounter";
 
 let sharedAudio: AudioContext | null = null;
 
@@ -334,6 +335,7 @@ export function Explorer({ initialFilm = "", picks = [] }: { initialFilm?: strin
       setFilm(dossier);
       setActiveId(dossier.locations[0]?.id ?? null);
       setPending(null);
+      gcSearch(hit.title, true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't open that title");
       setPending(null);
@@ -359,6 +361,7 @@ export function Explorer({ initialFilm = "", picks = [] }: { initialFilm?: strin
         setError("No IMDb movie or series matched that.");
         setPending(null);
         setBusy(null);
+        gcSearch(q, false);
         return;
       }
       suggestCache.current.set(hit.title.toLowerCase(), hit);
@@ -389,6 +392,7 @@ export function Explorer({ initialFilm = "", picks = [] }: { initialFilm?: strin
         setError("No IMDb match.");
         setPending(null);
         setBusy(null);
+        gcSearch(title, false);
         return;
       }
       suggestCache.current.set(title.toLowerCase(), hit);

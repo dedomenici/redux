@@ -4,6 +4,7 @@ import { geocodePlace, nearbyFilms } from "@/lib/film.functions";
 import type { NearbySpot } from "@/lib/film-types";
 import { asset, tileUrl } from "@/lib/static-host";
 import { fitView, layerTransform, MIN_MAP_ZOOM, useSlippyMap } from "@/lib/map-gestures";
+import { gcSearch } from "@/lib/goatcounter";
 
 export const Route = createFileRoute("/near")({
   component: NearPage,
@@ -116,8 +117,10 @@ function NearPage() {
         setStatus(you ? "ready" : "idle");
         setPending("");
         setError("That place didn't turn up.");
+        gcSearch(q, false);
         return;
       }
+      gcSearch(hit.name || q, true);
       await load(hit.lat, hit.lng, miles, hit.name);
     } catch (err) {
       setStatus(you ? "ready" : "idle");
